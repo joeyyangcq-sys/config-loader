@@ -1,0 +1,4 @@
+welcome:
+  message: "Hello from dynamic config hehe new pice of shit!!!"
+server:
+  bind: ":8081"

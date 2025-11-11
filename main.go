@@ -1,0 +1,118 @@
+package main
+
+import (
+    "context"
+    "flag"
+    "log/slog"
+    "strings"
+    "sync/atomic"
+    "time"
+
+    "github.com/cloudwego/hertz/pkg/app"
+    "github.com/cloudwego/hertz/pkg/app/server"
+    conf "config-loader/conf"
+    provider "config-loader/conf/provider"
+)
+
+// 阶段 0/1：最小 HTTP 服务 + 配置加载
+// - 通过 YAML 配置设置监听端口
+// - "/" 返回欢迎信息，"/health" 返回健康状态
+func main() {
+    source := flag.String("source", "file", "config source: file|etcd|nacos")
+    cfgPath := flag.String("config", "./config.yaml", "config file path (for file source)")
+    etcdEndpoints := flag.String("etcd-endpoints", "", "comma-separated etcd endpoints (for etcd source)")
+    etcdKey := flag.String("etcd-key", "", "etcd key holding YAML config (for etcd source)")
+    etcdUser := flag.String("etcd-user", "", "etcd username (optional)")
+    etcdPass := flag.String("etcd-pass", "", "etcd password (optional)")
+    nacosServers := flag.String("nacos-servers", "", "comma-separated nacos server addrs host:port (for nacos source)")
+    nacosNS := flag.String("nacos-namespace", "", "nacos namespace id (optional)")
+    nacosGroup := flag.String("nacos-group", "DEFAULT_GROUP", "nacos group")
+    nacosDataID := flag.String("nacos-dataid", "", "nacos dataId holding YAML config")
+    flag.Parse()
+
+    // 初始化 Provider
+    var p provider.Provider
+    switch *source {
+    case "file":
+        p = provider.NewFile(*cfgPath)
+    case "etcd":
+        eps := strings.Split(strings.TrimSpace(*etcdEndpoints), ",")
+        p = provider.NewEtcd(nonEmpty(eps), *etcdKey, *etcdUser, *etcdPass)
+    case "nacos":
+        eps := strings.Split(strings.TrimSpace(*nacosServers), ",")
+        p = provider.NewNacos(nonEmpty(eps), *nacosNS, *nacosGroup, *nacosDataID)
+    default:
+        slog.Error("unknown source", "source", *source)
+        return
+    }
+
+    opts, err := conf.LoadFromProvider(p)
+    if err != nil {
+        slog.Error("failed to load config", "source", *source, "error", err)
+        return
+    }
+    var optsVal atomic.Value
+    optsVal.Store(opts)
+
+	h := server.New(
+		server.WithHostPorts(opts.Server.Bind),
+		server.WithDisableDefaultDate(true),
+		server.WithDisablePrintRoute(true),
+		server.WithExitWaitTime(1*time.Second),
+	)
+
+	// 动态配置：欢迎语与 opts
+    var welcome atomic.Value // string
+    if opts.Welcome.Message != "" {
+        welcome.Store(opts.Welcome.Message)
+    } else {
+        welcome.Store("Hello")
+    }
+
+    // 监听来源变更，动态刷新 opts
+    if err := p.Watch(func() error {
+        newOpts, err := conf.LoadFromProvider(p)
+        if err != nil {
+            slog.Error("reload config failed", "error", err)
+            return nil
+        }
+        old := optsVal.Load().(conf.Options)
+        optsVal.Store(newOpts)
+        if newOpts.Welcome.Message != "" {
+            welcome.Store(newOpts.Welcome.Message)
+        }
+        if old.Server.Bind != newOpts.Server.Bind {
+            slog.Warn("server.bind changed, please restart to apply", "old", old.Server.Bind, "new", newOpts.Server.Bind)
+        } else {
+            slog.Info("config reloaded", "bind", newOpts.Server.Bind)
+        }
+        return nil
+    }); err != nil {
+        slog.Error("start config watch failed", "error", err)
+    }
+
+    h.GET("/", func(ctx context.Context, c *app.RequestContext) {
+        cur := optsVal.Load().(conf.Options)
+        c.String(200, welcome.Load().(string)+" (bind="+cur.Server.Bind+")")
+    })
+
+	h.GET("/health", func(ctx context.Context, c *app.RequestContext) {
+		c.JSON(200, map[string]string{"status": "ok"})
+	})
+
+	h.Spin()
+}
+
+// nonEmpty 过滤空字符串元素
+func nonEmpty(items []string) []string {
+    var out []string
+    for _, it := range items {
+        s := strings.TrimSpace(it)
+        if s != "" {
+            out = append(out, s)
+        }
+    }
+    return out
+}
+
+// 仅文件动态配置版本，不再包含其他 Provider。
