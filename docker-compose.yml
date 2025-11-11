@@ -1,0 +1,45 @@
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.12
+    container_name: etcd
+    platform: linux/amd64
+    command:
+      - /usr/local/bin/etcd
+      - --name
+      - etcd
+      - --data-dir
+      - /etcd-data
+      - --advertise-client-urls
+      - http://0.0.0.0:2379
+      - --listen-client-urls
+      - http://0.0.0.0:2379
+      - --listen-peer-urls
+      - http://0.0.0.0:2380
+      - --initial-advertise-peer-urls
+      - http://0.0.0.0:2380
+      - --initial-cluster
+      - etcd=http://0.0.0.0:2380
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    volumes:
+      - etcd-data:/etcd-data
+
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: nacos
+    platform: linux/amd64
+    environment:
+      - MODE=standalone
+      - NACOS_AUTH_ENABLE=false
+      - JVM_XMS=512m
+      - JVM_XMX=512m
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - nacos-data:/home/nacos
+
+volumes:
+  etcd-data:
+  nacos-data:

@@ -8,15 +8,14 @@ import (
     "sync/atomic"
     "time"
 
-    "github.com/cloudwego/hertz/pkg/app"
-    "github.com/cloudwego/hertz/pkg/app/server"
     conf "config-loader/conf"
     provider "config-loader/conf/provider"
+    "github.com/cloudwego/hertz/pkg/app"
+    "github.com/cloudwego/hertz/pkg/app/server"
 )
 
-// 阶段 0/1：最小 HTTP 服务 + 配置加载
-// - 通过 YAML 配置设置监听端口
-// - "/" 返回欢迎信息，"/health" 返回健康状态
+// main 负责解析参数、选择 Provider，并启动 HTTP 服务与监听。
+// 配置解析逻辑由 conf 包提供；provider 包仅负责配置来源接口。
 func main() {
     source := flag.String("source", "file", "config source: file|etcd|nacos")
     cfgPath := flag.String("config", "./config.yaml", "config file path (for file source)")
@@ -46,22 +45,23 @@ func main() {
         return
     }
 
-    opts, err := conf.LoadFromProvider(p)
+    // 加载配置
+    opts, err := conf.LoadOptionsFromProvider(p)
     if err != nil {
-        slog.Error("failed to load config", "source", *source, "error", err)
+        slog.Error("failed to load config", "error", err)
         return
     }
     var optsVal atomic.Value
     optsVal.Store(opts)
 
-	h := server.New(
-		server.WithHostPorts(opts.Server.Bind),
-		server.WithDisableDefaultDate(true),
-		server.WithDisablePrintRoute(true),
-		server.WithExitWaitTime(1*time.Second),
-	)
+    h := server.New(
+        server.WithHostPorts(opts.Server.Bind),
+        server.WithDisableDefaultDate(true),
+        server.WithDisablePrintRoute(true),
+        server.WithExitWaitTime(1*time.Second),
+    )
 
-	// 动态配置：欢迎语与 opts
+    // 动态配置：欢迎语与 opts
     var welcome atomic.Value // string
     if opts.Welcome.Message != "" {
         welcome.Store(opts.Welcome.Message)
@@ -71,7 +71,7 @@ func main() {
 
     // 监听来源变更，动态刷新 opts
     if err := p.Watch(func() error {
-        newOpts, err := conf.LoadFromProvider(p)
+        newOpts, err := conf.LoadOptionsFromProvider(p)
         if err != nil {
             slog.Error("reload config failed", "error", err)
             return nil
@@ -96,11 +96,11 @@ func main() {
         c.String(200, welcome.Load().(string)+" (bind="+cur.Server.Bind+")")
     })
 
-	h.GET("/health", func(ctx context.Context, c *app.RequestContext) {
-		c.JSON(200, map[string]string{"status": "ok"})
-	})
+    h.GET("/health", func(ctx context.Context, c *app.RequestContext) {
+        c.JSON(200, map[string]string{"status": "ok"})
+    })
 
-	h.Spin()
+    h.Spin()
 }
 
 // nonEmpty 过滤空字符串元素
@@ -114,5 +114,3 @@ func nonEmpty(items []string) []string {
     }
     return out
 }
-
-// 仅文件动态配置版本，不再包含其他 Provider。
