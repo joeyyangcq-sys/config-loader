@@ -33,6 +33,42 @@ go run . -source file -config ./config.yaml
 - 程序会自动重新加载配置；若仅欢迎语改变，立即生效
 - 若 `server.bind` 改变，日志会提示需重启以应用端口变更
 
+### 一键本地环境（Docker Compose）
+如果你想快速准备本地的 Nacos 与 Etcd：
+
+```bash
+# 启动 Nacos 与 Etcd（需要已安装 Docker）
+docker compose up -d
+
+# 将仓库根目录的 config.yaml 注入到二者
+./scripts/seed-config.sh
+
+# 使用 Nacos 运行（订阅 dataId 的动态更新）
+go run . -source nacos \
+  -nacos-servers 127.0.0.1:8848 \
+  -nacos-namespace "" \
+  -nacos-group DEFAULT_GROUP \
+  -nacos-dataid config.yaml
+
+# 或使用 Etcd 运行（订阅指定 key 的动态更新）
+go run . -source etcd \
+  -etcd-endpoints 127.0.0.1:2379 \
+  -etcd-key /config-loader/config.yaml
+```
+
+### 命令行参数速览
+- `-source`：配置来源，支持 `file` / `etcd` / `nacos`
+- `-config`：当来源为 `file` 时，配置文件路径（例如 `./config.yaml`）
+- `-etcd-endpoints`：Etcd 端点列表（例如 `127.0.0.1:2379`）
+- `-etcd-key`：Etcd 中存储 YAML 的键（例如 `/config-loader/config.yaml`）
+- `-etcd-user` / `-etcd-pass`：Etcd 认证（可选）
+- `-nacos-servers`：Nacos 服务器地址（例如 `127.0.0.1:8848`）
+- `-nacos-namespace`：Nacos 命名空间（默认空字符串）
+- `-nacos-group`：Nacos 配置分组（例如 `DEFAULT_GROUP`）
+- `-nacos-dataid`：Nacos 配置 `dataId`（例如 `config.yaml`）
+
+说明：修改 `welcome.message` 将立即生效；修改 `server.bind` 会在日志中提示需要重启以应用端口变更。
+
 ## 代码结构
 - `conf/load.go`：配置结构定义与解析/校验
 - `conf/provider/`：文件 Provider 与通用 Manager（可选的通用解析路径）

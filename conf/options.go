@@ -4,7 +4,9 @@ package conf
 // 目前仅包含欢迎语与服务绑定端口，可按需扩展。
 type Options struct {
 	Welcome struct {
-		Message string `yaml:"message"`
+		Title    string   `yaml:"title"`
+		Messages []string `yaml:"messages"`
+		Tail     string   `yaml:"tail"`
 	} `yaml:"welcome"`
 	Server struct {
 		Bind string `yaml:"bind"`

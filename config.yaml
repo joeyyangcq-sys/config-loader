@@ -1,4 +1,8 @@
 welcome:
-  message: "Hello from dynamic config hehe new pice of shit!!!"
+  title: "Welcome to the Dynamic Config Server"
+  message:
+    - "Hello from dynamic config hehe new pice of shit!!!"
+    - "Welcome to the Dynamic Config Server"
+  tail: "Have a nice day!"
 server:
   bind: ":8081"
