@@ -16,6 +16,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 )
 
+var welcome atomic.Value // string
+
 // main 负责解析参数、选择 Provider，并启动 HTTP 服务与监听。
 // 配置解析逻辑由 conf 包提供；provider 包仅负责配置来源接口。
 func main() {
@@ -68,14 +70,6 @@ func main() {
 		server.WithExitWaitTime(1*time.Second),
 	)
 
-	// 动态配置：欢迎语与 opts
-	var welcome atomic.Value // string
-	if opts.Welcome.Title != "" {
-		welcome.Store(opts.Welcome.Title)
-	} else {
-		welcome.Store("Hello")
-	}
-
 	// 监听来源变更，动态刷新 opts
 	if err := p.Watch(func() error {
 		newOpts, err := conf.LoadOptionsFromProvider(p)
@@ -83,25 +77,10 @@ func main() {
 			slog.Error("reload config failed", "error", err)
 			return nil
 		}
-		old := optsVal.Load().(conf.Options)
+
 		optsVal.Store(newOpts)
-
-		// 更新配置的 JSON 表示
 		if newOptsStr, err := sonic.MarshalString(newOpts); err == nil {
-			optsJSON.Store(newOptsStr)
-		}
-
-		// 同步更新欢迎语（立即生效）
-		if newOpts.Welcome.Title != "" {
-			welcome.Store(newOpts.Welcome.Title)
-		} else {
-			welcome.Store("Hello")
-		}
-
-		if old.Server.Bind != newOpts.Server.Bind {
-			slog.Warn("server.bind changed, please restart to apply", "old", old.Server.Bind, "new", newOpts.Server.Bind)
-		} else {
-			slog.Info("config reloaded", "bind", newOpts.Server.Bind)
+			welcome.Store(newOptsStr)
 		}
 		return nil
 	}); err != nil {
@@ -109,10 +88,7 @@ func main() {
 	}
 
 	h.GET("/", func(ctx context.Context, c *app.RequestContext) {
-		cur := optsVal.Load().(conf.Options)
-		// 返回完整配置的 JSON（同时包含简要字段）
-		jsonStr, _ := sonic.MarshalString(cur)
-		c.JSON(200, jsonStr)
+		c.JSON(200, welcome.Load().(string))
 	})
 
 	h.GET("/health", func(ctx context.Context, c *app.RequestContext) {
