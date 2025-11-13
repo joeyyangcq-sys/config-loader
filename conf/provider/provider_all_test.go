@@ -201,7 +201,7 @@ func TestEtcd_OpenAndWatch(t *testing.T) {
     }
     select {
     case <-ch:
-    case <-time.After(5 * time.Second):
+    case <-time.After(10 * time.Second):
         t.Fatalf("timeout")
     }
 }

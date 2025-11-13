@@ -9,7 +9,7 @@ import (
 	"time"
 
 	conf "config-loader/conf"
-	provider "config-loader/conf/provider"
+	loader "config-loader/loader"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/hertz/pkg/app"
@@ -33,24 +33,24 @@ func main() {
 	nacosDataID := flag.String("nacos-dataid", "", "nacos dataId holding YAML config")
 	flag.Parse()
 
-	// 初始化 Provider
-	var p provider.Provider
+	// 初始化 Loader
+	var l *loader.Loader
 	switch *source {
 	case "file":
-		p = provider.NewFile(*cfgPath)
+		l = loader.NewFile(*cfgPath)
 	case "etcd":
 		eps := strings.Split(strings.TrimSpace(*etcdEndpoints), ",")
-		p = provider.NewEtcd(nonEmpty(eps), *etcdKey, *etcdUser, *etcdPass)
+		l = loader.NewEtcd(nonEmpty(eps), *etcdKey, *etcdUser, *etcdPass)
 	case "nacos":
 		eps := strings.Split(strings.TrimSpace(*nacosServers), ",")
-		p = provider.NewNacos(nonEmpty(eps), *nacosNS, *nacosGroup, *nacosDataID)
+		l = loader.NewNacos(nonEmpty(eps), *nacosNS, *nacosGroup, *nacosDataID)
 	default:
 		slog.Error("unknown source", "source", *source)
 		return
 	}
 
 	// 加载配置
-	opts, err := conf.LoadOptionsFromProvider(p)
+	opts, err := l.Load()
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
 		return
@@ -72,19 +72,13 @@ func main() {
 	)
 
 	// 监听来源变更，动态刷新 opts
-	if err := p.Watch(func() error {
-		newOpts, err := conf.LoadOptionsFromProvider(p)
-		if err != nil {
-			slog.Error("reload config failed", "error", err)
-			return nil
-		}
-
+	l.SetOnUpdate(func(newOpts conf.Options) {
 		optsVal.Store(newOpts)
 		if newOptsStr, err := sonic.MarshalString(newOpts); err == nil {
 			welcome.Store(newOptsStr)
 		}
-		return nil
-	}); err != nil {
+	})
+	if err := l.Watch(); err != nil {
 		slog.Error("start config watch failed", "error", err)
 	}
 
