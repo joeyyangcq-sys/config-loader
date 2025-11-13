@@ -1,9 +1,7 @@
 welcome:
-  title: "Welcome to the Dynamic Config Server"
-  message:
-    - "Hello from dynamic config hehe new pice of shit!!!"
-    - "Welcome to the Dynamic Config Server"
-    - "Dynamic Config Server is running"
-  tail: "Have a nice day!"
+  title: "hello"
+  messages:
+    - "clear all configs"
+  tail: "tail tail" 
 server:
-  bind: ":8081"
+  bind: ":8083"

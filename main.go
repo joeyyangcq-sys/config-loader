@@ -57,10 +57,11 @@ func main() {
 	}
 	var optsVal atomic.Value
 	optsVal.Store(opts)
-	// 维护当前配置的 JSON 字符串，便于在响应中直接返回
-	var optsJSON atomic.Value
+	// 初始化欢迎（用于承载完整配置的 JSON 字符串），防止首次请求取值为 nil
 	if jsonStr, err := sonic.MarshalString(opts); err == nil {
-		optsJSON.Store(jsonStr)
+		welcome.Store(jsonStr)
+	} else {
+		welcome.Store("{}")
 	}
 
 	h := server.New(
@@ -88,7 +89,14 @@ func main() {
 	}
 
 	h.GET("/", func(ctx context.Context, c *app.RequestContext) {
-		c.JSON(200, welcome.Load().(string))
+		v := welcome.Load()
+		if v != nil {
+			c.JSON(200, v.(string))
+			return
+		}
+		// 回退：直接返回当前配置对象
+		cur := optsVal.Load().(conf.Options)
+		c.JSON(200, cur)
 	})
 
 	h.GET("/health", func(ctx context.Context, c *app.RequestContext) {
