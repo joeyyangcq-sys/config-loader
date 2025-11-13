@@ -20,6 +20,8 @@ CONFIG_DATA_ID="${CONFIG_DATA_ID:-config.yaml}"
 ETCD_ENDPOINT="${ETCD_ENDPOINT:-http://127.0.0.1:2379}"
 ETCD_KEY="${ETCD_KEY:-/config-loader/config.yaml}"
 
+CONF_DIR="${CONF_DIR:-}"
+
 if [[ ! -f "$CONFIG_FILE" ]]; then
   echo "[seed] 未找到配置文件: $CONFIG_FILE" >&2
   exit 1
@@ -72,3 +74,19 @@ fi
 echo "[seed] Etcd 写入成功"
 
 echo "[seed] 完成。"
+
+if [[ -n "$CONF_DIR" && -d "$CONF_DIR" ]]; then
+  echo "[seed] 扫描目录: $CONF_DIR"
+  for f in $(find "$CONF_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \)); do
+    rel=$(basename "$f")
+    key="/config-loader/dir/${rel}"
+    echo "[seed] 写入: $key <- $f"
+    KB=$(printf "%s" "$key" | base64 | tr -d '\n')
+    VB=$(cat "$f" | base64 | tr -d '\n')
+    curl -sS -X POST "${ETCD_ENDPOINT}/v3/kv/put" -H "Content-Type: application/json" -d "{\"key\":\"${KB}\",\"value\":\"${VB}\"}" >/dev/null
+    echo "[seed] 读取: $key"
+    get_body="{\"key\":\"${KB}\"}"
+    resp=$(curl -sS -X POST "${ETCD_ENDPOINT}/v3/kv/range" -H "Content-Type: application/json" -d "$get_body")
+    echo "$resp" | grep -q "kvs" || echo "[seed] 未读取到: $key"
+  done
+fi

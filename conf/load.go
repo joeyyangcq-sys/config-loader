@@ -1,13 +1,13 @@
 package conf
 
 import (
-    "errors"
-    "fmt"
-    "os"
+	"errors"
+	"fmt"
+	"os"
 
-    "config-loader/conf/provider"
+	"config-loader/conf/provider"
 
-    "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 )
 
 // Load 读取并解析 YAML 配置文件。
@@ -38,8 +38,10 @@ func LoadFromProvider(p provider.Provider, opts any) error {
 	if len(contents) == 0 {
 		return errors.New("no config content from provider")
 	}
-	if err := yaml.Unmarshal([]byte(contents[0].Payload), opts); err != nil {
-		return fmt.Errorf("parse yaml: %w", err)
+	for _, c := range contents {
+		if err := yaml.Unmarshal([]byte(c.Payload), opts); err != nil {
+			return fmt.Errorf("parse yaml: %w", err)
+		}
 	}
 
 	return nil
@@ -48,19 +50,21 @@ func LoadFromProvider(p provider.Provider, opts any) error {
 // LoadOptionsFromProvider 通过 Provider 读取第一个配置文档并解析为 Options。
 // 会为缺省端口设置默认值。
 func LoadOptionsFromProvider(p provider.Provider) (Options, error) {
-    var out Options
-    contents, err := p.Open()
-    if err != nil {
-        return out, err
-    }
-    if len(contents) == 0 {
-        return out, errors.New("no config content from provider")
-    }
-    if err := yaml.Unmarshal([]byte(contents[0].Payload), &out); err != nil {
-        return out, fmt.Errorf("parse yaml: %w", err)
-    }
-    if out.Server.Bind == "" {
-        out.Server.Bind = ":8080"
-    }
-    return out, nil
+	var out Options
+	contents, err := p.Open()
+	if err != nil {
+		return out, err
+	}
+	if len(contents) == 0 {
+		return out, errors.New("no config content from provider")
+	}
+	for _, c := range contents {
+		if err := yaml.Unmarshal([]byte(c.Payload), &out); err != nil {
+			return out, fmt.Errorf("parse yaml: %w", err)
+		}
+	}
+	if out.Server.Bind == "" {
+		out.Server.Bind = ":8080"
+	}
+	return out, nil
 }
